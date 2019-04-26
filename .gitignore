@@ -1,0 +1,7 @@
+*.html
+*.png
+*.rdb
+*.rdx
+*.RData
+*_cache/
+*_files/
