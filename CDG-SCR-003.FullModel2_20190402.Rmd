@@ -352,8 +352,8 @@ SCORT = SCORTprev %>% rename(
   ) %>% mutate(
   Cohort = "SCORT",
     gCNR = 1,   
-  tsCNR = cnr,    ## False since it's normalized, but I won't use it so I don't care
-  tCNR = cnr,     ## Assuming normalization takes the tsCNR and returns the tCNR
+  tsCNR = cnr) %>% mutate(    ## False since it's normalized, but I won't use it so I don't care
+  tCNR = if_else(is.na(Purity_DigPath),(tsCNR-(gCNR*(1-TP)))/TP ,cnr),     ## Assuming normalization takes the tsCNR and returns the tCNR
   sCNR = cnr    ## Assuming gCNR=1
 
 )
