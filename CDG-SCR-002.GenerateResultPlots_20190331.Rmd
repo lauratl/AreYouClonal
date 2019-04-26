@@ -1,0 +1,42 @@
+
+Proportion of variants of each type according to the classification step
+
+```{r}
+ccfs %>% 
+  filter(!Diploid) %>%
+  filter(Driverness==1)%>%
+  ggplot()+
+  geom_bar(aes(x = Diploid, fill = as.character(k)))+
+  facet_wrap(~Cohort, scales = "free_y")
+```
+
+
+Study of clonality relying on the adjusted p-value instead of in max_CCF>=1:
+
+```{r}
+p = ccfs %>% 
+  filter(Cohort =="SCORT") %>%
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  mutate(Driver = Driverness>=0.5)%>%
+  group_by(Gene, Driver) %>%
+  summarise(Clonality_Perc = sum(Clonal)/n(), nmuts = n()) %>%
+  ggplot()+
+  geom_bar(aes(y = Clonality_Perc, fill = Driver, x = Driver, alpha = nmuts), stat = "Identity", position = "dodge") + 
+    geom_text(aes(label = paste("n = ", nmuts, sep =""), x = Driver, y =if_else(Clonality_Perc > 0.5, Clonality_Perc - 0.2, Clonality_Perc + 0.2)))+
+    facet_wrap(~Gene) +
+    scale_fill_discrete(name = "Type of mutation", labels = c("Synonymous", "Non-synonymous"))+
+    scale_x_discrete(name = "Type of mutation", labels = c("Syn", "Non-syn"))+
+    ggtitle("Percentage of clonality per gene in SCORT")+
+    ylab("Percentage of non-rejected clonality")+
+    theme(plot.title = element_text(size = 20),
+        legend.title = element_text(size = 15),
+        legend.text = element_text(size = 12),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        plot.background = element_blank(),
+        panel.grid = element_blank()) +
+    scale_alpha_continuous(name = "# of muts", range = c(0.25, 1))
+    
+```

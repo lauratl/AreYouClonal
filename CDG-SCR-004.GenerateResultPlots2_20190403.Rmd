@@ -1,0 +1,1282 @@
+---
+title: "Clonality in CRC driver genes"
+author: "Laura Tomás"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float: true
+---
+
+<style type="text/css">
+div.main-container {
+  max-width: 14000px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+
+
+```{r, echo = FALSE, warning= FALSE, message=FALSE}
+
+# Libraries and variables
+
+library(tidyverse)
+library(ggplot2)
+projectpath = "/Users/laura/GoogleDrive/PROJECTS/PROYECTOS/ClonalityDriverGenes/"
+rdspath = paste(projectpath, "/07_WORKDIR/RDS/CDG-OBJ-", sep = "")
+```
+
+```{r, echo = FALSE}
+knitr::opts_chunk$set(comment=NA,  message = FALSE, warning = FALSE,echo = FALSE, cache = TRUE,out.width='1600px',dpi = 400, out.height='1200px' )
+
+```
+
+
+
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE}
+# Input 
+#Final result of SCR-003
+ccfs = readRDS(paste(rdspath, "030.20190425.ccfs.rds", sep = ""))
+ccfs$Pathogenesis = factor(ccfs$Pathogenesis, levels = c("Non-pathogenic", "Maybe pathogenic", "Pathogenic"))
+```
+
+# Variant assignation
+
+```{r}
+
+# Count 
+p = ccfs %>% ggplot()+
+  geom_bar(aes(x = as.character(n), fill = as.character(k)))+
+  facet_wrap(~Cohort, scales = "free")+
+  xlab("Tumor copy number") +
+  ylab("Number of assigned variants")+
+  scale_fill_discrete(name = "Copies with the variant")+
+  ggtitle("Results of the assignation of the SNVs to tumor copies")
+
+
+```
+
+
+```{r}
+
+# Percentage 
+p = ccfs %>% 
+  group_by(n, Cohort) %>%
+  mutate(TotalN = n()) %>%
+  group_by(n, k, Cohort, TotalN) %>%
+  mutate(Perck = n()/TotalN) %>%
+  group_by(n, k, Cohort, TotalN, Perck) %>%
+  summarise() %>%
+  ggplot()+
+  geom_bar(aes(x = as.character(n), fill = as.character(k), y = Perck), stat = "Identity")+
+  facet_wrap(~Cohort, scales = "free")+
+  xlab("Tumor copy number") +
+  ylab("Number of assigned variants")+
+  scale_fill_discrete(name = "Copies with the variant")+
+  ggtitle("Results of the assignation of the SNVs to tumor copies")
+
+
+```
+
+# CCF plots
+
+## CCF distribution
+
+```{r}
+p = ccfs %>%
+  gather(key = "CCF_type", value = "CCF_value", CCF, min_CCF, max_CCF) %>%
+  ggplot()+
+  geom_violin(aes(x = Pathogenesis, y = CCF_value, fill = Pathogenesis), draw_quantiles = c(0.5))+
+  facet_grid(Cohort~CCF_type)+
+  geom_hline(yintercept = 1, color = "red")
+p
+
+
+# With fathmm
+
+p = ccfs %>%
+  gather(key = "CCF_type", value = "CCF_value", CCF, min_CCF, max_CCF) %>%
+  ggplot()+
+  geom_violin(aes(x = Fathmm, y = CCF_value, fill = Fathmm), draw_quantiles = c(0.5))+
+  facet_grid(Cohort~CCF_type)+
+  geom_hline(yintercept = 1, color = "red")
+p
+```
+
+
+## APC
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, out.width='1600px', dpi=400, out.height='1200px'}
+p = ccfs %>%
+  filter(Gene =="APC") %>%
+  filter(Driverness==1) %>%
+  ggplot(aes(x = reorder(paste(Patient,Pos), -CCF), y = CCF )) + 
+  geom_errorbar(aes(ymin=min_CCF, ymax=max_CCF), colour="black", size=0.1, width = 0) + 
+  geom_point(aes(color = k_n_a_b), size = 0.3) + 
+  facet_wrap(~Cohort, scales = "free_x", nrow = 3)+
+  geom_hline(yintercept = 1, color = "red") +
+  ggtitle("Observed CCF and its confidence interval in APC") +
+  scale_color_discrete(name = "Type of SNV"
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  xlab("SNV") +
+  ylab("CCF")
+
+p
+```
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, out.width='1600px', dpi=400, out.height='1200px'}
+p = ccfs %>%
+  filter(Gene =="APC") %>%
+  filter(Driverness==1) %>%
+  group_by(Patient) %>%
+  filter(max_CCF == max(max_CCF)) %>%
+  ggplot(aes(x = reorder(paste(Patient,Pos), -max_CCF), y = CCF )) + 
+  geom_errorbar(aes(ymin=min_CCF, ymax=max_CCF), colour="black", size=0.1, width = 0) + 
+  geom_point(aes(color = k_n_a_b), size = 0.3) + 
+  facet_wrap(~Cohort, scales = "free_x", nrow = 3)+
+  geom_hline(yintercept = 1, color = "red") +
+  ggtitle("Observed CCF and its confidence interval in APC") +
+  scale_color_discrete(name = "Type of SNV"
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  xlab("Patient") +
+  ylab("CCF")
+
+p
+```
+
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, out.width='1600px', dpi=400, out.height='1200px'}
+p = ccfs %>%
+  filter(Gene =="APC") %>%
+  filter(Pathogenesis=="Pathogenic" | Pathogenesis =="Maybe pathogenic") %>%
+  group_by(Patient) %>%
+  filter(max_CCF == max(max_CCF)) %>%
+  ggplot(aes(x = reorder(paste(Patient,Pos), -max_CCF), y = CCF )) + 
+  geom_errorbar(aes(ymin=min_CCF, ymax=max_CCF), colour="black", size=0.1, width = 0) + 
+  geom_point(aes(color = k_n_a_b), size = 0.3) + 
+  facet_wrap(~Cohort, scales = "free_x", nrow = 3)+
+  geom_hline(yintercept = 1, color = "red") +
+  ggtitle("Observed CCF and its confidence interval in APC pathogenic and maybe pathogenic variants") +
+  scale_color_discrete(name = "Type of SNV"
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  xlab("Patient") +
+  ylab("CCF")
+
+p
+```
+
+
+With Fathmm
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, out.width='1600px', dpi=400, out.height='1200px'}
+p = ccfs %>%
+  filter(Gene =="APC") %>%
+  filter(Cohort=="SCORT") %>%
+  group_by(Patient) %>%
+  filter(max_CCF == max(max_CCF)) %>%
+  ggplot(aes(x = reorder(paste(Patient,Pos), -max_CCF), y = CCF )) + 
+  geom_errorbar(aes(ymin=min_CCF, ymax=max_CCF), colour="black", size=0.1, width = 0) + 
+  geom_point(aes(color = Fathmm), size = 0.3) + 
+  facet_wrap(~Cohort, scales = "free_x", nrow = 3)+
+  geom_hline(yintercept = 1, color = "red") +
+  ggtitle("Observed CCF and its confidence interval in APC") +
+  scale_color_discrete(name = "Type of SNV"
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  xlab("Patient") +
+  ylab("CCF")
+
+p
+
+ccfs %>% filter(Gene =="APC" & Cohort =="SCORT")
+```
+
+## KRAS
+
+
+```{r, echo= FALSE, warning = FALSE, cache = TRUE, out.width='1600px', dpi = 400,out.height='1200px'}
+p = ccfs %>%
+  filter(Gene =="KRAS") %>%
+  filter(Driverness==1) %>%
+  ggplot(aes(x = reorder(paste(Patient,Pos), -CCF), y = CCF ), size = 0.3) + 
+  geom_errorbar(aes(ymin=min_CCF, ymax=max_CCF), colour="black", size=.1, width = 0) + 
+  geom_point(aes(color = k_n_a_b), size = 0.3) + 
+  facet_wrap(~Cohort, scales = "free_x", nrow = 3)+
+  geom_hline(yintercept = 1, color = "red") +
+  ggtitle("Observed CCF and its confidence interval in KRAS") +
+  scale_color_discrete(name = "Type of SNV"
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  xlab("SNV") +
+  ylab("CCF")
+p
+```
+```{r, echo= FALSE, warning = FALSE, cache = TRUE, out.width='1600px', dpi = 400,out.height='1200px'}
+p = ccfs %>%
+  filter(Gene =="KRAS") %>%
+  filter(Driverness==1) %>%
+  group_by(Patient) %>%
+  filter(max_CCF == max(max_CCF)) %>%
+  ggplot(aes(x = reorder(paste(Patient,Pos), -max_CCF), y = CCF ), size = 0.3) + 
+  geom_errorbar(aes(ymin=min_CCF, ymax=max_CCF), colour="black", size=.1, width = 0) + 
+  geom_point(aes(color = k_n_a_b), size = 0.3) + 
+  facet_wrap(~Cohort, scales = "free_x", nrow = 3)+
+  geom_hline(yintercept = 1, color = "red") +
+  ggtitle("Observed CCF and its confidence interval in KRAS") +
+  scale_color_discrete(name = "Type of SNV"
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  xlab("Patient") +
+  ylab("CCF")
+p
+```
+
+
+## BRAF
+
+
+```{r, echo = FALSE, warning = FALSE, cache =TRUE, out.width='1600px',dpi = 400, out.height='1200px'}
+p = ccfs %>%
+  filter(Gene =="BRAF") %>%
+  filter(Driverness==1) %>%
+  ggplot(aes(x = reorder(paste(Patient,Pos), -CCF), y = CCF ), size = 0.3) + 
+  geom_errorbar(aes(ymin=min_CCF, ymax=max_CCF), colour="black", size=.1, width = 0) + 
+  geom_point(aes(color = k_n_a_b), size = 0.3) + 
+  facet_wrap(~Cohort, scales = "free_x", nrow = 3)+
+  geom_hline(yintercept = 1, color = "red") +
+  ggtitle("Observed CCF and its confidence interval in BRAF") +
+  scale_color_discrete(name = "Type of SNV"
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  xlab("SNV") +
+  ylab("CCF")
+p
+```
+
+```{r, echo = FALSE, warning = FALSE, cache =TRUE, out.width='1600px',dpi = 400, out.height='1200px'}
+p = ccfs %>%
+  filter(Gene =="BRAF") %>%
+  filter(Driverness==1) %>%
+  group_by(Patient) %>%
+  filter(max_CCF == max(max_CCF)) %>%
+  ggplot(aes(x = reorder(paste(Patient,Pos), -max_CCF), y = CCF ), size = 0.3) + 
+  geom_errorbar(aes(ymin=min_CCF, ymax=max_CCF), colour="black", size=.1, width = 0) + 
+  geom_point(aes(color = k_n_a_b), size = 0.3) + 
+  facet_wrap(~Cohort, scales = "free_x", nrow = 3)+
+  geom_hline(yintercept = 1, color = "red") +
+  ggtitle("Observed CCF and its confidence interval in BRAF") +
+  scale_color_discrete(name = "Type of SNV"
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  xlab("Patient") +
+  ylab("CCF")
+p
+```
+## PIK3CA
+
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, out.width='1600px',dpi = 400, out.height='1200px'}
+p = ccfs %>%
+  filter(Gene =="PIK3CA") %>%
+  filter(Driverness==1) %>%
+  ggplot(aes(x = reorder(paste(Patient,Pos), -CCF), y = CCF ), size = 0.3) + 
+  geom_errorbar(aes(ymin=min_CCF, ymax=max_CCF), colour="black", size=.1, width = 0) + 
+  geom_point(aes(color = k_n_a_b), size = 0.3) + 
+  facet_wrap(~Cohort, scales = "free_x", nrow = 3)+
+  geom_hline(yintercept = 1, color = "red") +
+  ggtitle("Observed CCF and its confidence interval in PIK3CA") +
+  scale_color_discrete(name = "Type of SNV"
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  xlab("SNV") +
+  ylab("CCF")
+p
+```
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, out.width='1600px',dpi = 400, out.height='1200px'}
+p = ccfs %>%
+  filter(Gene =="PIK3CA") %>%
+  filter(Driverness==1) %>%
+  group_by(Patient) %>%
+  filter(max_CCF == max(max_CCF)) %>%
+  ggplot(aes(x = reorder(paste(Patient,Pos), -max_CCF), y = CCF ), size = 0.3) + 
+  geom_errorbar(aes(ymin=min_CCF, ymax=max_CCF), colour="black", size=.1, width = 0) + 
+  geom_point(aes(color = k_n_a_b), size = 0.3) + 
+  facet_wrap(~Cohort, scales = "free_x", nrow = 3)+
+  geom_hline(yintercept = 1, color = "red") +
+  ggtitle("Observed CCF and its confidence interval in PIK3CA") +
+  scale_color_discrete(name = "Type of SNV"
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  xlab("Patient") +
+  ylab("CCF")
+p
+```
+
+## TP53
+
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, out.width='1600px',dpi = 400, out.height='1200px'}
+p = ccfs %>%
+  filter(Gene =="TP53") %>%
+  filter(Driverness==1) %>%
+  ggplot(aes(x = reorder(paste(Patient,Pos), -CCF), y = CCF ), size = 0.3) + 
+  geom_errorbar(aes(ymin=min_CCF, ymax=max_CCF), colour="black", size=.1, width = 0) + 
+  geom_point(aes(color = k_n_a_b), size = 0.3) + 
+  facet_wrap(~Cohort, scales = "free_x", nrow = 3)+
+  geom_hline(yintercept = 1, color = "red") +
+  ggtitle("Observed CCF and its confidence interval in TP53") +
+  scale_color_discrete(name = "Type of SNV"
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  xlab("SNV") +
+  ylab("CCF")
+p
+```
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, out.width='1600px',dpi = 400, out.height='1200px'}
+p = ccfs %>%
+  filter(Gene =="TP53") %>%
+  filter(Driverness==1) %>%
+  group_by(Patient) %>%
+  filter(max_CCF == max(max_CCF)) %>%
+  ggplot(aes(x = reorder(paste(Patient,Pos), -max_CCF), y = CCF ), size = 0.3) + 
+  geom_errorbar(aes(ymin=min_CCF, ymax=max_CCF), colour="black", size=.1, width = 0) + 
+  geom_point(aes(color = k_n_a_b), size = 0.3) + 
+  facet_wrap(~Cohort, scales = "free_x", nrow = 3)+
+  geom_hline(yintercept = 1, color = "red") +
+  ggtitle("Observed CCF and its confidence interval in TP53") +
+  scale_color_discrete(name = "Type of SNV"
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  xlab("Patient") +
+  ylab("CCF")
+p
+```
+
+# Clonality 
+
+## Proportion of clonality
+
+### Whole cohort
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE}
+p = ccfs %>% mutate(Clonal = adjusted_pvalue>=0.05) %>% 
+  group_by(Cohort, Driverness) %>% 
+  summarise(TotalMuts = n(), ClonalMuts = sum(Clonal)) %>% 
+  mutate(ClonalProp = ClonalMuts/TotalMuts) %>%
+  ggplot() +
+  geom_bar(aes(x = as.character(Driverness), y = ClonalProp, fill = as.character(Driverness)), stat = "Identity") +
+  facet_wrap(~Cohort) +
+  ylim(c(0,1))+
+  ggtitle("Proportion of variants in which clonality can't be rejected") +
+  scale_fill_discrete(name = "Driverness",
+                       labels = c("Synonymous", "Non-syn. in non-driver genes", "Non-syn. in driver genes")
+                      ) +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  xlab("") +
+  ylab("Proportion of possible clonal variants")
+p
+```
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE}
+p = ccfs %>% mutate(Clonal = adjusted_pvalue>=0.05) %>% 
+  group_by(Cohort, Pathogenesis) %>% 
+  summarise(TotalMuts = n(), ClonalMuts = sum(Clonal)) %>% 
+  mutate(ClonalProp = ClonalMuts/TotalMuts) %>%
+  ggplot() +
+  geom_bar(aes(x =Pathogenesis, y = ClonalProp, fill = Pathogenesis), stat = "Identity") +
+  facet_wrap(~Cohort) +
+  ylim(c(0,1))+
+  ggtitle("Proportion of variants in which clonality can't be rejected") +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  xlab("") +
+  ylab("Proportion of possible clonal variants")
+p
+```
+
+
+
+
+```{r}
+
+# Per pathogenesis level, percentages of both accepted and rejected clonality
+
+p = ccfs %>% mutate(Clonal = adjusted_pvalue>=0.05) %>% 
+  group_by(Cohort, Pathogenesis) %>% 
+  summarise(ClonalMuts = sum(Clonal), NonClonalMuts = sum(Clonal==FALSE), TotalMuts = n()) %>%
+  mutate(ClonalMuts = ClonalMuts/TotalMuts, NonClonalMuts = NonClonalMuts/TotalMuts) %>%
+  gather(key = Clonality, value = NMuts, ClonalMuts, NonClonalMuts) %>%
+  ggplot() +
+  geom_bar(aes(x =Pathogenesis, y = NMuts, fill = Clonality), stat = "Identity") +
+  scale_fill_discrete(labels = c("Accepted", "Rejected")) +
+  facet_wrap(~Cohort) +
+  ggtitle("Clonality by pathogenesis level") +
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12, angle = 45)) +
+  xlab("") +
+  ylab("Proportion of variants")
+p
+``` 
+### Per gene
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, dpi = 400}
+
+tcgatable = read.table(paste(projectpath, "/01_INFO/02_PREVIOUS_RESEARCH/Cross2018/Cross2018.SupplementaryTables.Tables4b-TCGA.csv", sep = ""), sep = ";", header = TRUE, stringsAsFactors = FALSE)
+intogentable = read.table(paste(projectpath, "/01_INFO/02_PREVIOUS_RESEARCH/Cross2018/Cross2018.SupplementaryTables.Tables4-IntOGenDrvivers.csv", sep = ""),sep = ";", header = TRUE, stringsAsFactors = FALSE)
+
+tcgaalias = data.frame(Order = c(9,12,15), GeneID = c("FAM123B", "MAP3K21", "OMIMD1"), Chromosome = c("X", "1", "13"), AproxLoci = c("q11.2","q42.2","13q31.3" ), Alias= c("AliasOf-AMER1", "AliasOf-KIAA1804", "AliasOf-GPC6"))
+tcgatable = rbind(tcgatable,tcgaalias)
+
+#READ_TestClonality_Drivers = READ_TestClonality %>% mutate(InTCGADriver = if_else(Hugo_Symbol %in% tcgatable$GeneID, TRUE, FALSE)) %>% mutate(InIntogenDriver = if_else(Hugo_Symbol %in% intogentable$SYMBOL, TRUE, FALSE)) %>% mutate(InDriver=if_else(InTCGADriver, TRUE, if_else(InIntogenDriver, TRUE, FALSE)))
+
+drivergenes = c(tcgatable$GeneID, intogentable$SYMBOL)
+```
+
+
+
+```{r, echo = FALSE, warning = FALSE, cache =TRUE, dpi = 400,out.width='1600px', out.height='1200px'}
+p = ccfs %>% 
+  filter(Gene %in% drivergenes) %>%
+  filter(Driverness==1) %>%
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Gene, Cohort) %>%
+  summarise(Perc_Clon = sum(Clonal)/n(),
+            Mutations = n()) %>%
+  arrange(desc(Perc_Clon)) %>%
+  rowid_to_column("Orderidx") %>%
+  ggplot()+
+  geom_bar(aes(x = Gene, y = Perc_Clon, fill = Mutations), stat = "Identity")+
+  facet_wrap(~Cohort, ncol = 1, scales = "free_x")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 6),
+        strip.text = element_text(size = 10),
+        axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        axis.text = element_text(size = 8),
+        axis.text.x = element_text(angle = 90, size = 5)) +
+  xlab("Driver gene") +
+  ylab("Proportion of possible clonal variants") +
+  ggtitle("Clonality of non-synonymous mutations in the driver genes") +
+  scale_fill_distiller(palette = "Spectral", name = "Number of mutations")
+
+p
+```
+
+```{r, echo = FALSE, warning = FALSE, cache =TRUE, dpi = 400,out.width='1600px', out.height='1200px'}
+p = ccfs %>% 
+  filter(Gene %in% drivergenes) %>%
+  filter(Driverness==1) %>%
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Patient, Gene) %>%
+  filter(adjusted_pvalue==max(adjusted_pvalue)) %>%
+  group_by(Gene, Cohort) %>%
+  summarise(Perc_Clon = sum(Clonal)/n(),
+            Mutations = n()) %>%
+  arrange(desc(Perc_Clon)) %>%
+  rowid_to_column("Orderidx") %>%
+  ggplot()+
+  geom_bar(aes(x = Gene, y = Perc_Clon, fill = Mutations), stat = "Identity")+
+  facet_wrap(~Cohort, ncol = 1, scales = "free_x")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 6),
+        strip.text = element_text(size = 10),
+        axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        axis.text = element_text(size = 8),
+        axis.text.x = element_text(angle = 90, size = 5)) +
+  xlab("Driver gene") +
+  ylab("Proportion of possible clonal patients") +
+  ggtitle("Clonality of non-synonymous mutations in the driver genes") +
+  scale_fill_distiller(palette = "Spectral", name = "Number of patients")
+
+p
+```
+
+```{r, echo = FALSE, warning = FALSE, cache =TRUE, dpi = 400,out.width='1600px', out.height='1200px'}
+p = ccfs %>% 
+  filter(Gene %in% drivergenes) %>%
+  filter(Pathogenesis=="Pathogenic") %>%
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Patient, Gene) %>%
+  filter(adjusted_pvalue==max(adjusted_pvalue)) %>%
+  group_by(Gene, Cohort) %>%
+  summarise(Perc_Clon = sum(Clonal)/n(),
+            Mutations = n()) %>%
+  arrange(desc(Perc_Clon)) %>%
+  rowid_to_column("Orderidx") %>%
+  ggplot()+
+  geom_bar(aes(x = Gene, y = Perc_Clon, fill = Mutations), stat = "Identity")+
+  facet_wrap(~Cohort, ncol = 1, scales = "free_x")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 6),
+        strip.text = element_text(size = 10),
+        axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        axis.text = element_text(size = 8),
+        axis.text.x = element_text(angle = 90, size = 5)) +
+  xlab("Driver gene") +
+  ylab("Proportion of possible clonal variants") +
+  ggtitle("Clonality of pathogenic mutations in the driver genes") +
+  scale_fill_distiller(palette = "Spectral", name = "Number of patients")
+
+p
+```
+
+### Per patient
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, dpi = 400,out.width='1600px', out.height='1200px'}
+p = ccfs %>% 
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Patient, Cohort, Driverness) %>%
+  summarise(Perc_Clon = sum(Clonal)/n(),
+            Mutations = n()) %>%
+  ggplot()+
+  geom_violin(aes(x = as.character(Driverness), y = Perc_Clon, fill = as.character(Driverness)))+
+  facet_wrap(~Cohort, ncol = 3, scales = "free_x")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 15),
+        legend.text = element_text(size = 12),
+        strip.text = element_text(size = 10),
+        axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        axis.text = element_text(size = 7),
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45)) +
+  xlab("Type of mutation") +
+  ylab("Proportion of possible clonal variants") +
+  ggtitle("Proportion of non-rejected clonality per patient") +
+  scale_x_discrete(name = "Type of mutation", labels = c("Syn", "Non-syn in non-driver", "Non-syn in driver"))
+
+p
+```
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, dpi = 400,out.width='1600px', out.height='1200px'}
+p = ccfs %>% 
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Patient, Cohort, Pathogenesis) %>%
+  summarise(Perc_Clon = sum(Clonal)/n(),
+            Mutations = n()) %>%
+  ggplot()+
+  geom_violin(aes(x = Pathogenesis, y = Perc_Clon, fill = Pathogenesis))+
+  facet_wrap(~Cohort, ncol = 3, scales = "free_x")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 15),
+        legend.text = element_text(size = 12),
+        strip.text = element_text(size = 10),
+        axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        axis.text = element_text(size = 7),
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45)) +
+  xlab("Type of mutation") +
+  ylab("Proportion of possible clonal variants") +
+  ggtitle("Proportion of non-rejected clonality per patient") +
+  scale_x_discrete(name = "Type of mutation")
+
+p
+```
+
+
+### Per patient and gene
+
+#### SCORT
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, dpi = 400,out.width='1600px', out.height='1200px'}
+t1= ccfs %>% 
+  filter(Cohort =="SCORT") %>%
+  filter(Driverness==1) %>%
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Gene, Patient)%>%
+  summarise(Clonal = sum(Clonal)>0) %>%
+  group_by(Gene) %>%
+  mutate(Muts_by_Gene= n()) %>%
+  arrange(Muts_by_Gene) %>%
+  rowid_to_column("TempGenePos") %>%
+  mutate(GeneOrder = min(TempGenePos)) %>%
+  group_by(Patient) %>%
+  mutate(Muts_by_Patient = n()) %>%
+  arrange(desc(Muts_by_Patient)) %>%
+  rowid_to_column("TempPatientPos") %>%
+  mutate(PatientOrder = min(TempPatientPos))%>%
+  ungroup()
+
+  
+t2 = expand.grid(Gene = unique(t1$Gene), Patient = unique(t1$Patient), Background = 0, stringsAsFactors = FALSE)
+
+p = 
+  ggplot() +
+  geom_tile(data=t1, aes(x = reorder(Patient, PatientOrder), y = reorder(Gene, GeneOrder), fill = Clonal)) +
+  geom_tile(data =t2, aes(x= Patient, y = Gene), color = "gray", fill = "#f2f2f2" )+
+  geom_tile(data=t1, aes(x = reorder(Patient, PatientOrder), y = reorder(Gene, GeneOrder), fill = Clonal), color = "gray")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  scale_fill_discrete(name = "Clonality", labels = c("Rejected","Non-rejected")) +
+  xlab("Patient") +
+  ylab("Driver genes") +
+  ggtitle("Clonality in driver genes for SCORT")
+  
+
+p
+
+```
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, dpi = 400,out.width='1600px', out.height='1200px'}
+t1= ccfs %>% 
+  filter(Cohort =="SCORT") %>%
+  filter(Pathogenesis =="Pathogenic") %>%
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Gene, Patient)%>%
+  summarise(Clonal = sum(Clonal)>0) %>%
+  group_by(Gene) %>%
+  mutate(Muts_by_Gene= n()) %>%
+  arrange(Muts_by_Gene) %>%
+  rowid_to_column("TempGenePos") %>%
+  mutate(GeneOrder = min(TempGenePos)) %>%
+  group_by(Patient) %>%
+  mutate(Muts_by_Patient = n()) %>%
+  arrange(desc(Muts_by_Patient)) %>%
+  rowid_to_column("TempPatientPos") %>%
+  mutate(PatientOrder = min(TempPatientPos))%>%
+  ungroup()
+
+  
+t2 = expand.grid(Gene = unique(t1$Gene), Patient = unique(t1$Patient), Background = 0, stringsAsFactors = FALSE)
+
+p = 
+  ggplot() +
+  geom_tile(data=t1, aes(x = reorder(Patient, PatientOrder), y = reorder(Gene, GeneOrder), fill = Clonal)) +
+  geom_tile(data =t2, aes(x= Patient, y = Gene), color = "gray", fill = "#f2f2f2" )+
+  geom_tile(data=t1, aes(x = reorder(Patient, PatientOrder), y = reorder(Gene, GeneOrder), fill = Clonal), color = "gray")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  scale_fill_discrete(name = "Clonality", labels = c("Rejected","Non-rejected")) +
+  xlab("Patient") +
+  ylab("Driver genes") +
+  ggtitle("Clonality of pathogenic variants for SCORT")
+  
+
+p
+
+```
+
+
+#### COAD
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, dpi = 400, out.width='1600px', out.height='1200px'}
+t1= ccfs %>% 
+  filter(Cohort =="COAD") %>%
+  filter(Driverness==1) %>%
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Gene, Patient)%>%
+  summarise(Clonal = sum(Clonal)>0) %>%
+  group_by(Gene) %>%
+  mutate(Muts_by_Gene= n()) %>%
+  arrange(Muts_by_Gene) %>%
+  rowid_to_column("TempGenePos") %>%
+  mutate(GeneOrder = min(TempGenePos)) %>%
+  group_by(Patient) %>%
+  mutate(Muts_by_Patient = n()) %>%
+  arrange(desc(Muts_by_Patient)) %>%
+  rowid_to_column("TempPatientPos") %>%
+  mutate(PatientOrder = min(TempPatientPos))%>%
+  ungroup()
+
+  
+t2 = expand.grid(Gene = unique(t1$Gene), Patient = unique(t1$Patient), Background = 0, stringsAsFactors = FALSE)
+
+p = 
+  ggplot() +
+  geom_tile(data=t1, aes(x = reorder(Patient, PatientOrder), y = reorder(Gene, GeneOrder), fill = Clonal)) +
+  geom_tile(data =t2, aes(x= Patient, y = Gene), color = "gray", fill = "#f2f2f2" )+
+  geom_tile(data=t1, aes(x = reorder(Patient, PatientOrder), y = reorder(Gene, GeneOrder), fill = Clonal), color = "gray")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size = 5)) +
+  scale_fill_discrete(name = "Clonality", labels = c("Rejected","Non-rejected")) +
+  xlab("Patient") +
+  ylab("Driver genes") +
+  ggtitle("Clonality in driver genes for COAD")
+  
+
+p
+
+```
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, dpi = 400, out.width='1600px', out.height='1200px'}
+t1= ccfs %>% 
+  filter(Cohort =="COAD") %>%
+  filter(Pathogenesis=="Pathogenic") %>%
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Gene, Patient)%>%
+  summarise(Clonal = sum(Clonal)>0) %>%
+  group_by(Gene) %>%
+  mutate(Muts_by_Gene= n()) %>%
+  arrange(Muts_by_Gene) %>%
+  rowid_to_column("TempGenePos") %>%
+  mutate(GeneOrder = min(TempGenePos)) %>%
+  group_by(Patient) %>%
+  mutate(Muts_by_Patient = n()) %>%
+  arrange(desc(Muts_by_Patient)) %>%
+  rowid_to_column("TempPatientPos") %>%
+  mutate(PatientOrder = min(TempPatientPos))%>%
+  ungroup()
+
+  
+t2 = expand.grid(Gene = unique(t1$Gene), Patient = unique(t1$Patient), Background = 0, stringsAsFactors = FALSE)
+
+p = 
+  ggplot() +
+  geom_tile(data=t1, aes(x = reorder(Patient, PatientOrder), y = reorder(Gene, GeneOrder), fill = Clonal)) +
+  geom_tile(data =t2, aes(x= Patient, y = Gene), color = "gray", fill = "#f2f2f2" )+
+  geom_tile(data=t1, aes(x = reorder(Patient, PatientOrder), y = reorder(Gene, GeneOrder), fill = Clonal), color = "gray")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size = 5)) +
+  scale_fill_discrete(name = "Clonality", labels = c("Rejected","Non-rejected")) +
+  xlab("Patient") +
+  ylab("Driver genes") +
+  ggtitle("Clonality of pathigenic variants for COAD")
+  
+
+p
+
+```
+
+#### READ
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE,dpi = 400,  out.width='1600px', out.height='1200px'}
+t1= ccfs %>% 
+  filter(Cohort =="READ") %>%
+  filter(Driverness==1) %>%
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Gene, Patient)%>%
+  summarise(Clonal = sum(Clonal)>0) %>%
+  group_by(Gene) %>%
+  mutate(Muts_by_Gene= n()) %>%
+  arrange(Muts_by_Gene) %>%
+  rowid_to_column("TempGenePos") %>%
+  mutate(GeneOrder = min(TempGenePos)) %>%
+  group_by(Patient) %>%
+  mutate(Muts_by_Patient = n()) %>%
+  arrange(desc(Muts_by_Patient)) %>%
+  rowid_to_column("TempPatientPos") %>%
+  mutate(PatientOrder = min(TempPatientPos))%>%
+  ungroup()
+
+  
+t2 = expand.grid(Gene = unique(t1$Gene), Patient = unique(t1$Patient), Background = 0, stringsAsFactors = FALSE)
+
+p = 
+  ggplot() +
+  geom_tile(data=t1, aes(x = reorder(Patient, PatientOrder), y = reorder(Gene, GeneOrder), fill = Clonal)) +
+  geom_tile(data =t2, aes(x= Patient, y = Gene), color = "gray", fill = "#f2f2f2" )+
+  geom_tile(data=t1, aes(x = reorder(Patient, PatientOrder), y = reorder(Gene, GeneOrder), fill = Clonal), color = "gray")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size = 5)) +
+  scale_fill_discrete(name = "Clonality", labels = c("Rejected","Non-rejected")) +
+  xlab("Patient") +
+  ylab("Driver genes") +
+  ggtitle("Clonality in driver genes for READ")
+  
+
+p
+
+```
+```{r, echo = FALSE, warning = FALSE, cache = TRUE,dpi = 400,  out.width='1600px', out.height='1200px'}
+t1= ccfs %>% 
+  filter(Cohort =="READ") %>%
+  filter(Pathogenesis=="Pathogenic") %>%
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Gene, Patient)%>%
+  summarise(Clonal = sum(Clonal)>0) %>%
+  group_by(Gene) %>%
+  mutate(Muts_by_Gene= n()) %>%
+  arrange(Muts_by_Gene) %>%
+  rowid_to_column("TempGenePos") %>%
+  mutate(GeneOrder = min(TempGenePos)) %>%
+  group_by(Patient) %>%
+  mutate(Muts_by_Patient = n()) %>%
+  arrange(desc(Muts_by_Patient)) %>%
+  rowid_to_column("TempPatientPos") %>%
+  mutate(PatientOrder = min(TempPatientPos))%>%
+  ungroup()
+
+  
+t2 = expand.grid(Gene = unique(t1$Gene), Patient = unique(t1$Patient), Background = 0, stringsAsFactors = FALSE)
+
+p = 
+  ggplot() +
+  geom_tile(data=t1, aes(x = reorder(Patient, PatientOrder), y = reorder(Gene, GeneOrder), fill = Clonal)) +
+  geom_tile(data =t2, aes(x= Patient, y = Gene), color = "gray", fill = "#f2f2f2" )+
+  geom_tile(data=t1, aes(x = reorder(Patient, PatientOrder), y = reorder(Gene, GeneOrder), fill = Clonal), color = "gray")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 15),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size = 5)) +
+  scale_fill_discrete(name = "Clonality", labels = c("Rejected","Non-rejected")) +
+  xlab("Patient") +
+  ylab("Driver genes") +
+  ggtitle("Clonality of pathigenic variants for READ")
+  
+
+p
+
+```
+
+## Clonality of driver vs non-driver
+
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, dpi = 400,out.width='1600px', out.height='1800px'}
+p = ccfs %>% 
+  filter(Gene %in% drivergenes) %>%
+  filter(Cohort =="SCORT") %>%
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Driverness, Gene) %>%
+  summarise(PClonal = sum(Clonal)/n(), Nmuts = n()) %>%
+  ggplot()+
+  geom_bar(aes(x = as.character(Driverness), y = PClonal, fill = as.character(Driverness), alpha=Nmuts), stat = "Identity")+
+  facet_wrap(~Gene)+
+  geom_text(aes(label = paste("n = ", Nmuts, sep =""), x = as.character(Driverness), y =if_else(PClonal > 0.5, PClonal - 0.2, PClonal + 0.2)), size =2)+
+  scale_alpha_continuous(name = "# of muts", range = c(0.25, 1))+
+  scale_fill_discrete(name = "Type of mutation", labels = c("Synonymous", "Non-synonymous"))+
+  scale_x_discrete(name = "Type of mutation", labels = c("Syn", "Non-syn"))+
+  ggtitle("Clonality in synonymous and non-synonymous per driver gene in SCORT")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 7),
+        axis.title.x = element_text(size = 7),
+        axis.title.y = element_text(size = 7),
+        axis.text = element_text(size = 8),
+        plot.background = element_blank(),
+        panel.grid = element_blank()) 
+
+p  
+
+
+```
+
+```{r, echo = FALSE, warning = FALSE, cache = TRUE, dpi = 400,out.width='1600px', out.height='1800px'}
+p = ccfs %>% 
+  filter(Gene %in% drivergenes) %>%
+  filter(Cohort =="SCORT") %>%
+  mutate(Clonal = adjusted_pvalue>=0.05) %>%
+  group_by(Pathogenesis, Gene) %>%
+  summarise(PClonal = sum(Clonal)/n(), Nmuts = n()) %>%
+  ggplot()+
+  geom_bar(aes(x = Pathogenesis, y = PClonal, fill = Pathogenesis, alpha=Nmuts), stat = "Identity")+
+  facet_wrap(~Gene)+
+  geom_text(aes(label = paste("n = ", Nmuts, sep =""), x = Pathogenesis, y =if_else(PClonal > 0.5, PClonal - 0.2, PClonal + 0.2)), size =2)+
+  scale_alpha_continuous(name = "# of muts", range = c(0.25, 1))+
+  scale_fill_discrete(name = "Type of mutation")+
+  scale_x_discrete(name = "Type of mutation")+
+  ggtitle("Clonality and pathogenesis  per driver gene in SCORT")+
+  theme(plot.title = element_text(size = 10),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7),
+        strip.text = element_text(size = 7),
+        axis.title.x = element_text(size = 7),
+        axis.title.y = element_text(size = 7),
+        axis.text = element_text(size = 8),
+        axis.text.x = element_blank(),
+        plot.background = element_blank(),
+        panel.grid = element_blank()) 
+
+p  
+
+
+```
+
+# Metadata
+
+
+## Clonality and sample type 
+
+Adenomas are less clonal
+
+```{r, echo = FALSE}
+
+scort_metadata = read.table(paste("/Users/laura/GoogleDrive/PROJECTS/PROYECTOS/ClonalityDriverGenes/raw/SCORT/SCORT_samples_190219.csv", sep = ""), stringsAsFactors = FALSE, header = TRUE, sep = ",") %>%
+  rename(Patient = scort_id)
+
+t = ccfs %>% 
+  filter(Cohort =="SCORT") %>%
+  group_by(Patient) %>%
+  summarise(PercClon = sum(adjusted_pvalue>=0.05)/n()) %>%
+  left_join(scort_metadata) 
+
+p = t %>%
+  group_by(sample_type) %>%
+  summarise(meanperc = mean(PercClon), nsamples = n()) %>%
+  ggplot()+
+  geom_bar(aes(x = sample_type, y = meanperc, fill = nsamples), stat = "Identity") +
+  geom_text(aes(x = sample_type, y = 1.05, label = nsamples))
+
+
+p = t %>%
+  filter(sample_type !="") %>%
+  group_by(sample_type) %>%
+  mutate(nsamples = n()) %>%
+  ggplot()+
+  geom_boxplot(aes(x = sample_type, y = PercClon, fill = nsamples)) +
+  geom_text(aes(x = sample_type, y = 1.05, label =paste("n = ", nsamples, sep = "")))+
+  xlab("Sample type")+
+  ylab("Percentage of non-rejected clonality")
+
+
+p
+
+```
+
+## Clonality and gender
+
+```{r}
+p = t %>%
+  group_by(gender) %>%
+  summarise(meanperc = mean(PercClon)) %>%
+  ggplot()+
+  geom_bar(aes(x = gender, y = meanperc, fill = gender), stat = "Identity")+
+  xlab("Gender")+
+  ylab("Percentage of non-rejected clonality")
+
+p
+```
+
+## Clonality percentage and age
+
+Not significant
+
+```{r}
+scort_metadata = read.table(paste("/Users/laura/GoogleDrive/PROJECTS/PROYECTOS/ClonalityDriverGenes/raw/SCORT/SCORT_samples_190219.csv", sep = ""), stringsAsFactors = FALSE, header = TRUE, sep = ",") %>%
+  rename(Patient = scort_id)
+
+t = ccfs %>% 
+  filter(Cohort =="SCORT") %>%
+  group_by(Patient) %>%
+  summarise(PercClon = sum(adjusted_pvalue>=0.05)/n()) %>%
+  left_join(scort_metadata) 
+
+lmm = lm( PercClon ~ age , data = t)
+
+
+p = t %>%
+  ggplot()+
+  geom_point(aes(x = age, y = PercClon))+
+  xlab("Age")+
+  ylab("Percentage of non-rejected clonality")+
+  geom_abline(slope = lmm$coefficients[[2]], intercept = lmm$coefficients[[1]])
+p
+
+
+```
+
+
+## Clonality and tumor purity 
+
+Significant (p-value < 0.001)
+```{r}
+t = t %>% 
+  mutate(TP = Purity_DigPath/100)
+lmm = lm( PercClon ~ TP , data = t)
+
+p = t %>%
+  ggplot()+
+  geom_point(aes(x =Purity_DigPath/100 , y = PercClon))+
+  geom_abline(slope = lmm$coefficients[[2]], intercept = lmm$coefficients[[1]], color = "red")
+
+p
+```
+
+
+
+## Clonality and depth 
+
+Significant (p-value < 0.001)
+
+```{r}
+
+lmm= lm( adjusted_pvalue ~ Depth , data = ccfs)
+p = ccfs %>% 
+  ggplot()+
+  geom_point(aes(x = Depth, y = adjusted_pvalue)) +
+  geom_abline(slope = lmm$coefficients[[2]], intercept = lmm$coefficients[[1]], color = "red")
+               
+ p  
+```
+
+
+```{r}
+ccfs_scort = ccfs%>%
+  filter(Cohort =="SCORT")
+lmm= lm( adjusted_pvalue ~ Depth , data = ccfs_scort)
+p = ccfs_scort %>% 
+  ggplot()+
+  geom_point(aes(x = Depth, y = adjusted_pvalue)) +
+  geom_abline(slope = lmm$coefficients[[2]], intercept = lmm$coefficients[[1]], color = "red")
+               
+  
+```
+
+
+## Clonality and copy number 
+
+Not significant
+
+```{r}
+ccfs_scort = ccfs%>%
+  filter(Cohort =="SCORT")
+lmm= lm( adjusted_pvalue ~ Clonal_tCNR , data = ccfs_scort)
+p = ccfs_scort %>% 
+  ggplot()+
+  geom_boxplot(aes(x = as.character(Clonal_tCNR), y = adjusted_pvalue)) +
+  geom_abline(slope = lmm$coefficients[[2]], intercept = lmm$coefficients[[1]], color = "red")+
+  xlab("Clonal tCNR")+
+  ylab("Adusted p-value")
+
+p
+```
+
+
+
+
+```{r}
+#In adenomas there is less clonality, but there is some... what is clonal in adenoma?
+# t = ccfs %>% 
+#   filter(Cohort =="SCORT") %>%
+#   left_join(scort_metadata) %>%
+#   filter(sample_type=="Adenoma") %>%
+#   mutate(Clonal = p.value>=0.05) %>%
+#   filter(Clonal) %>%
+#   filter(Driverness==1) %>%
+#   ggplot()+
+#   geom_bar(aes(x = as.character(Pos), fill = Gene))
+# 
+# 
+# #ccfs %>% 
+#   filter(Cohort =="SCORT") %>%
+#   left_join(scort_metadata) %>%
+#   filter(sample_type=="Adenoma") %>%
+#   mutate(Clonal = p.value>=0.05) %>%
+#   filter(Clonal) %>%
+#   filter(Driverness==1) %>%
+#   filter(Gene=="PTEN")
+```
+
+## Clonality and tissue type
+
+
+```{r}
+p = ccfs %>% 
+  filter(Cohort =="SCORT") %>%
+  group_by(Patient) %>%
+  summarise(PercClon = sum(adjusted_pvalue>=0.05)/n()) %>%
+  left_join(scort_metadata) %>%
+  filter(tissue !="") %>%
+  group_by(tissue) %>%
+  mutate(nsamples = n()) %>%
+  ggplot()+
+  geom_boxplot(aes(x = tissue, y = PercClon, fill = nsamples)) +
+  geom_text(aes(x = tissue, y = 1.05, label =paste("n = ", nsamples, sep = "")))+
+  xlab("Tissue type")+
+  ylab("Percentage of non-rejected clonality")
+
+p
+```
+
+And fresh frozen contains all and only adenomas:
+
+```{r}
+ggplot(t) + geom_bar(aes(x = tissue, fill =sample_type))+
+  xlab("Tissue type")+
+  ylab("Count")
+```
+

@@ -1,0 +1,618 @@
+---
+title: "CDG-SCR-003.FullModel2_20190402"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+projectpath = "/Users/laura/GoogleDrive/PROJECTS/PROYECTOS/ClonalityDriverGenes/"
+rdspath = paste(projectpath, "/07_WORKDIR/RDS/CDG-OBJ-", sep = "")
+```
+
+
+This contains a new version of SCR-001 but without modeling the tumor depth with another binomial. 
+# Data cleaning and annotation
+
+## Obtaining and merging datasets
+
+Includes removing extra aliquots and samples without TP and/or CN information. 
+
+
+Previously done, recopilate all the steps here. For TCGA, now I'll just open rds objects and ignore previous analysis of clonality and driverness. IMPORTANT: ungroup and remove non-PASS variants. For SCORT it's easier to load the files again (remember using the last file for the mutations, the one that includes the synonyous ones). 
+
+TCGA
+
+```{r}
+READprev = readRDS(paste(rdspath, "019.READ_TestClonality_Drivers.rds", sep = "")) %>% ungroup() %>% filter(FILTER == "PASS")
+COADprev = readRDS(paste(rdspath, "014-20190228.COAD_TestClonality.rds", sep = "")) %>% ungroup()%>% filter(FILTER == "PASS")
+
+
+
+```
+
+SCORT
+
+```{r}
+
+samples = read.table("/Users/laura/GoogleDrive/PROJECTS/PROYECTOS/ClonalityDriverGenes/06_RAW/01_DATA/SCORT/SCORT_samples_190219.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE)
+snvs = read.table("/Users/laura/GoogleDrive/PROJECTS/PROYECTOS/ClonalityDriverGenes/06_RAW/01_DATA/SCORT/SCORT_mutations_050319.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE)
+cnv = read.table("/Users/laura/GoogleDrive/PROJECTS/PROYECTOS/ClonalityDriverGenes/06_RAW/01_DATA/SCORT/SCORT_CopyNumber_190219.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE)
+
+cnv = cnv %>% mutate(Gene = Gene_Symbol )
+
+scort1 = left_join(left_join(samples, snvs), cnv, by =c("Gene", "scort_id")) %>% mutate(VAF=t_alt_count/coverage) %>%
+  mutate(cnr = 2^MeanLog2Value)
+
+samples_with_cn_info = scort1 %>% group_by(scort_id) %>% summarise(non_na_count = sum(!is.na(MeanLog2Value)), total_count = n()) %>% mutate(percna = non_na_count/total_count) %>%  filter(percna>0) %>% select(scort_id) 
+
+SCORTprev = scort1 %>% filter(!is.na(ESTIMATE_TumorPurity | !is.na(Purity_DigPath))) %>%
+  mutate (TP = if_else(is.na(Purity_DigPath), ESTIMATE_TumorPurity/100, Purity_DigPath/100)) %>%
+  filter(scort_id %in% samples_with_cn_info$scort_id)
+
+SCORTprev = SCORTprev %>% filter(!is.na(cnr))   ### REMOVE VARIANTS WITHOUT CN INFO FROM SAMPLES WITH CN INFO
+
+```
+
+
+
+
+
+
+
+
+## Driverness score
+
+As a provisional approach, I'll use:
+
+* 0 for synonymous variants
+* 0.5 for non-synonymous variants in non-driver genes
+* 1 for non-synonymous variants in driver genes (TCGA and Intogen)
+
+
+
+Open TCGA and Intogen driver lists
+
+
+```{r}
+
+tcgatable = read.table(paste(projectpath, "/01_INFO/02_PREVIOUS_RESEARCH/Cross2018/Cross2018.SupplementaryTables.Tables4b-TCGA.csv", sep = ""), sep = ";", header = TRUE, stringsAsFactors = FALSE)
+intogentable = read.table(paste(projectpath, "/01_INFO/02_PREVIOUS_RESEARCH/Cross2018/Cross2018.SupplementaryTables.Tables4-IntOGenDrvivers.csv", sep = ""),sep = ";", header = TRUE, stringsAsFactors = FALSE)
+
+tcgaalias = data.frame(Order = c(9,12,15), GeneID = c("FAM123B", "MAP3K21", "OMIMD1"), Chromosome = c("X", "1", "13"), AproxLoci = c("q11.2","q42.2","13q31.3" ), Alias= c("AliasOf-AMER1", "AliasOf-KIAA1804", "AliasOf-GPC6"))
+tcgatable = rbind(tcgatable,tcgaalias)
+
+#READ_TestClonality_Drivers = READ_TestClonality %>% mutate(InTCGADriver = if_else(Hugo_Symbol %in% tcgatable$GeneID, TRUE, FALSE)) %>% mutate(InIntogenDriver = if_else(Hugo_Symbol %in% intogentable$SYMBOL, TRUE, FALSE)) %>% mutate(InDriver=if_else(InTCGADriver, TRUE, if_else(InIntogenDriver, TRUE, FALSE)))
+
+drivergenes = c(tcgatable$GeneID, intogentable$SYMBOL)
+```
+
+Classifying as drivers / non drivers
+
+
+```{r}
+
+# COAD
+
+COADprev = COADprev %>% mutate(InDriverGene = if_else(Hugo_Symbol %in% tcgatable$GeneID, TRUE, if_else(Hugo_Symbol %in% intogentable$SYMBOL, TRUE, FALSE)))
+
+# READ
+
+READprev = READprev %>% mutate(InDriverGene = if_else(Hugo_Symbol %in% tcgatable$GeneID, TRUE, if_else(Hugo_Symbol %in% intogentable$SYMBOL, TRUE, FALSE)))
+
+# SCORT
+
+SCORTprev = SCORTprev %>% mutate(InDriverGene = if_else(Gene %in% tcgatable$GeneID, TRUE, if_else(Gene %in% intogentable$SYMBOL, TRUE, FALSE)))
+
+```
+
+Classifying as synonymous / non-synonymous
+
+Description of the effects https://web.archive.org/web/20170611192252/https://gatkforums.broadinstitute.org/gatk/discussion/8815/oncotator-variant-classification-and-secondary-variant-classification 
+
+```{r}
+
+tcga_effects = c("3'Flank", "3'UTR", "5'Flank" , "5'UTR" ,"Frame_Shift_Del" ,"Frame_Shift_Ins" ,"IGR", "In_Frame_Del" , "In_Frame_Ins", "Intron"  , "Missense_Mutation","Nonsense_Mutation" ,"Nonstop_Mutation", "RNA" , "Silent",  "Splice_Region" , "Splice_Site",  "Translation_Start_Site")
+
+tcga_nonsyn_effects = c("3'Flank", "3'UTR", "5'Flank" , "5'UTR" ,"Frame_Shift_Del" ,"Frame_Shift_Ins" , "In_Frame_Del" , "In_Frame_Ins"  , "Missense_Mutation","Nonsense_Mutation" ,"Nonstop_Mutation" ,  "Splice_Region" , "Splice_Site",  "Translation_Start_Site")
+
+# COAD
+
+COADprev = COADprev %>% mutate(Synonymous = if_else(Variant_Classification %in% tcga_nonsyn_effects, FALSE, TRUE))
+
+# READ
+
+READprev = READprev %>% mutate(Synonymous = if_else(Variant_Classification %in% tcga_nonsyn_effects, FALSE, TRUE))
+
+
+# SCORT
+
+SCORTprev = SCORTprev %>% mutate(Synonymous = if_else(Effect =="silent", TRUE, FALSE))
+
+
+```
+
+
+
+Assigning driverness
+
+
+```{r}
+
+# COAD
+
+COADprev = COADprev %>% mutate(Driverness = if_else(Synonymous, 0, if_else(InDriverGene, 1, 0.5)))
+
+
+# READ
+
+READprev = READprev %>% mutate(Driverness = if_else(Synonymous, 0, if_else(InDriverGene, 1, 0.5)))
+
+
+
+# SCORT
+
+SCORTprev = SCORTprev %>% mutate(Driverness = if_else(Synonymous, 0, if_else(InDriverGene, 1, 0.5))) #3375
+
+```
+
+## Pathogenesis score
+
+### SIFT
+
+New classification of the variants, including SIFT score, to classify them into pathogenic, non-pathogenic and possible pathogenic. 
+
+I take SCORT SIFT score from Vep:
+
+```{r}
+vepvcf = read.table("/Users/laura/GoogleDrive/PROJECTS/PROYECTOS/ClonalityDriverGenes/07_WORKDIR/Vep/SCORT_mutations_050319.VEP.vcf", header = TRUE, stringsAsFactors = FALSE, comment.char ="#")
+colnames(vepvcf) = c("Chrom", "Pos","ID", "Ref", "Alt", "Qual", "Filter", "Info", "Format", "Sample1")
+
+vepvcf = vepvcf %>% separate(Info, c("DP", "VEP_annot"), sep = ";")%>%
+  separate(VEP_annot, c(NA, "VEP"), sep = "=") %>%
+  separate(VEP, c("Allele","Consequence","IMPACT","SYMBOL","Gene_VEP","Feature_type","Feature","BIOTYPE","EXON","INTRON","HGVSc","HGVSp","cDNA_position","CDS_position","Protein_position","Amino_acids","Codons","Existing_variation","DISTANCE","STRAND","FLAGS","SYMBOL_SOURCE","HGNC_ID","TSL","APPRIS","SIFT","PolyPhen","AF","CLIN_SIG","SOMATIC","PHENO","PUBMED","MOTIF_NAME","MOTIF_POS","HIGH_INF_POS","MOTIF_SCORE_CHANGE"), 
+           sep = "\\|") %>%
+  select(-c(DP)) %>%
+  separate(SIFT, c("SIFT_type", "SIFT_score"), sep = "\\(") %>%
+  separate(SIFT_score, c("SIFT_score", NA), sep = "\\)") %>%
+  select(c(Chrom, Pos, Ref, Alt, SIFT_type, SIFT_score)) %>%
+  distinct() # If I don't do distinct() there are duplicated rows, which multiply by all the same combinations of chr and pos between patients giving place to a huge data frame when joining with SCORT snvs
+
+
+SCORTprev = SCORTprev %>% left_join(vepvcf %>% select(c(Chrom, Pos, Ref, Alt, SIFT_type, SIFT_score)) )
+
+```
+
+
+TCGA data already has SIFT score, so I format it properly:
+
+```{r}
+COADprev = COADprev %>%
+  separate(SIFT, c("SIFT_type", "SIFT_score"), sep = "\\(") %>%
+  separate(SIFT_score, c("SIFT_score", NA), sep = "\\)") 
+
+READprev = READprev %>%
+  separate(SIFT, c("SIFT_type", "SIFT_score"), sep = "\\(") %>%
+  separate(SIFT_score, c("SIFT_score", NA), sep = "\\)") 
+```
+
+And now I apply the new classification:
+
+```{r}
+
+SCORTprev = SCORTprev %>% 
+  mutate(SIFT_type = if_else(is.na(SIFT_type) | SIFT_type=="" , ".", SIFT_type )) %>%
+  mutate(Pathogenesis = if_else(Synonymous, "Non-pathogenic", if_else(InDriverGene, if_else(SIFT_type=="tolerated" |SIFT_type =="tolerated_low_confidence", "Non-pathogenic", if_else(SIFT_type==".", "Maybe pathogenic", "Pathogenic")), if_else(SIFT_type=="deleterious"|SIFT_type=="deleterious_low_confidence", "Maybe pathogenic", "Non-pathogenic")))) 
+
+SCORTprev %>% group_by(InDriverGene,Pathogenesis) %>% summarise(n())
+
+COADprev = COADprev %>% 
+  mutate(SIFT_type = if_else(is.na(SIFT_type) | SIFT_type=="" , ".", SIFT_type )) %>%
+  mutate(Pathogenesis = if_else(Synonymous, "Non-pathogenic", if_else(InDriverGene, if_else(SIFT_type=="tolerated" |SIFT_type =="tolerated_low_confidence", "Non-pathogenic", if_else(SIFT_type==".", "Maybe pathogenic", "Pathogenic")), if_else(SIFT_type=="deleterious"|SIFT_type=="deleterious_low_confidence", "Maybe pathogenic", "Non-pathogenic")))) 
+
+
+
+READprev = READprev %>% 
+  mutate(SIFT_type = if_else(is.na(SIFT_type) | SIFT_type=="" , ".", SIFT_type )) %>%
+  mutate(Pathogenesis = if_else(Synonymous, "Non-pathogenic", if_else(InDriverGene, if_else(SIFT_type=="tolerated" |SIFT_type =="tolerated_low_confidence", "Non-pathogenic", if_else(SIFT_type==".", "Maybe pathogenic", "Pathogenic")), if_else(SIFT_type=="deleterious"|SIFT_type=="deleterious_low_confidence", "Maybe pathogenic", "Non-pathogenic")))) 
+
+```
+
+### Fathmm
+
+To pass from fathm annotation to the list of mutations, I need veptxt (xnQF6rM5ID6iDkhp.vep.txt), containing Chr, Pos, ENSP and aa change (por example P795R). xnQF6rM5ID6iDkhp.vep.txt is the input of ParseVCF, the output of VEP in txt format with --protein option. 
+```{r}
+fathmm = read.table("/Users/laura/GoogleDrive/PROJECTS/PROYECTOS/ClonalityDriverGenes/07_WORKDIR/fathmm/SCORT_fathmm.tab.txt", stringsAsFactors = FALSE, header = TRUE, sep = "\t", comment.char = "")
+
+fathmm = fathmm %>% filter(Prediction!="") 
+
+fathmm %>% group_by(Protein.ID, Substitution) %>% summarise(np=n_distinct(Prediction)) %>% group_by(np) %>% summarise(n())
+
+# vcftovep = read.table("/Users/laura/GoogleDrive/PROJECTS/PROYECTOS/ClonalityDriverGenes/07_WORKDIR/Vep/With_protein/xnQF6rM5ID6iDkhp.vcf", sep = "\t", stringsAsFactors = FALSE) %>% rename(Chr = V1, Pos = V2, Ref = V4, Alt = V5, Info = V8) %>% select(c(Chr, Pos, Ref, Alt, Info))
+# 
+# vcftovep = vcftovep %>% 
+#   separate(Info, into = c("DP", "VEP_annot"), sep = ";") %>%
+#   separate(VEP_annot, c(NA, "VEP"), sep = "=") %>%
+#   separate(VEP, c("Allele","Consequence","IMPACT","SYMBOL","Gene_VEP","Feature_type","Feature","BIOTYPE","EXON","INTRON","HGVSc","HGVSp","cDNA_position","CDS_position","Protein_position","Amino_acids","Codons","Existing_variation","DISTANCE","STRAND","FLAGS","SYMBOL_SOURCE","HGNC_ID","TSL","APPRIS","SIFT","PolyPhen","AF","CLIN_SIG","SOMATIC","PHENO","PUBMED","MOTIF_NAME","MOTIF_POS","HIGH_INF_POS","MOTIF_SCORE_CHANGE"), 
+#            sep = "\\|") 
+
+veptxt = read.table("/Users/laura/GoogleDrive/PROJECTS/PROYECTOS/ClonalityDriverGenes/07_WORKDIR/Vep/With_protein/SCORT_muts_VEP_hg19_withprotein.vep.txt", sep = "\t", stringsAsFactors = FALSE) %>% filter(str_detect(V14, "ENSP")) %>%
+  mutate(ENSP = gsub (".*;ENSP=", "", V14)) %>%
+  separate(V2, into = c("Chr", "Interval"), sep = ":") %>%
+  separate(Interval, into = c("Pos", NA), sep = "-") %>% 
+  filter(V7=="missense_variant") %>% 
+  separate(V11, into = c("originalAA", "newAA"), sep = "/") %>%
+ unite("fathm_change_annot", originalAA,V10, newAA, sep = "" )%>%
+  separate(ENSP, into = c("ENSP",NA ), sep = ";")%>% 
+  select(c(Chr, Pos,fathm_change_annot, ENSP))
+
+vepandfathmm = inner_join(veptxt, fathmm %>% rename(ENSP=Protein.ID, fathm_change_annot=Substitution)) %>% select(Chr, Pos,  Fathmm_Prediction=Prediction, Fathmm_Score = Score)
+
+# vepandfathmm %>% group_by(Fathmm_Prediction) %>% summarise(n())
+# vepandfathmm %>% group_by(Chr, Pos) %>% summarise(np = n_distinct(Fathmm_Prediction)) %>% group_by(np) %>% summarise(n())
+# veptxt %>% group_by(Chr, Pos) %>% summarise(np = n_distinct(fathm_change_annot)) %>% group_by(np) %>%summarise(n())
+```
+
+```{r}
+
+vepandfathmm2 = vepandfathmm %>% mutate(Fathmm_Prediction = if_else(Fathmm_Prediction=="CANCER", "WCANCER", Fathmm_Prediction )) %>% group_by(Chr, Pos) %>% summarise(Fathmm_Prediction = max(Fathmm_Prediction)) %>% mutate(Fathmm_Prediction = if_else(Fathmm_Prediction=="WCANCER", "CANCER", Fathmm_Prediction ))
+
+
+SCORTprev= SCORTprev %>% left_join(vepandfathmm2 %>% mutate(Pos = as.numeric(Pos)) %>% rename(Chrom=Chr)) 
+
+ 
+
+
+# vepandfathmm %>% group_by(Chr, Pos) %>% mutate(np = n_distinct(Fathmm_Prediction)) %>% filter(np>1)
+
+```
+
+## Prepare the input datasets
+
+They must contain (only, with the same names):
+
+* Patient
+* Chr
+* Pos
+* Gene
+* Driverness
+* Depth
+* Alt_count
+* VAF
+* tsCNR
+* tCNR
+* sCNR
+* gCNR
+* TP
+* Cohort
+* Pathogenesis
+* Fathmm
+
+
+Rename useful columns
+
+```{r}
+
+# COAD
+
+COAD = COADprev %>% rename(
+  Patient = Patient.x,
+  Gene2=Gene,
+  Gene=Hugo_Symbol,
+  Chr = Chromosome.x,
+  Pos = Start.x,
+  Driverness = Driverness,
+  Depth = t_depth, 
+  Alt_count = t_alt_count,
+  VAF = VAF,
+  tsCNR = tsCNR,
+  tCNR = tCNR,
+  sCNR = sCNR,
+  gCNR = gCNR,
+  TP = TP) %>% mutate(
+  Cohort = "COAD",
+  Fathmm=NA
+)
+
+# READ
+
+READ = READprev %>% rename(
+  Patient = Patient.x, 
+  Gene2=Gene,
+  Chr = Chromosome.x,
+  Gene = Hugo_Symbol,
+  Pos = Start.x,
+  Driverness = Driverness,
+  Depth = t_depth, 
+  Alt_count = t_alt_count,
+  VAF = VAF,
+  tsCNR = tsCNR,
+  tCNR = tCNR,
+  sCNR = sCNR,
+  gCNR = gCNR,
+  TP = TP) %>% mutate(
+  Cohort = "READ",
+  Fathmm = NA
+  
+)
+
+
+# SCORT
+
+SCORT = SCORTprev %>% rename(
+  Patient = scort_id, 
+  Chr = Chrom,
+  Pos = Pos,
+  Driverness = Driverness,
+  Depth = coverage, 
+  Alt_count = t_alt_count,
+  VAF = VAF,
+  Fathmm= Fathmm_Prediction,
+  TP = TP
+  ) %>% mutate(
+  Cohort = "SCORT",
+    gCNR = 1,   
+  tsCNR = cnr,    ## False since it's normalized, but I won't use it so I don't care
+  tCNR = cnr,     ## Assuming normalization takes the tsCNR and returns the tCNR
+  sCNR = cnr    ## Assuming gCNR=1
+
+)
+
+```
+
+
+Keep only useful columns
+
+```{r}
+# COAD
+
+COAD = COAD %>% select(Patient, Chr, Pos, Gene, Driverness, Depth, Alt_count, VAF, tsCNR, tCNR, sCNR, gCNR, TP, Cohort, Pathogenesis, Fathmm)
+
+# READ
+
+READ = READ %>% select(Patient, Chr, Pos, Gene, Driverness, Depth, Alt_count, VAF, tsCNR, tCNR, sCNR, gCNR, TP, Cohort, Pathogenesis, Fathmm)
+
+# SCORT
+
+SCORT = SCORT %>% select(Patient, Chr, Pos, Gene, Driverness, Depth, Alt_count, VAF, tsCNR, tCNR, sCNR, gCNR, TP, Cohort, Pathogenesis, Fathmm)
+
+```
+
+
+Merge the 3 cohorts:
+
+```{r}
+
+input = rbind(COAD, rbind(READ, SCORT))
+```
+
+
+Save it as an object:
+
+
+```{r}
+
+saveRDS(input, paste(rdspath, "020.20190425.input.rds", sep = ""))   # Pathogenesis column added 12/4/2019 # Fathmm added 25/04/2019
+
+# Before it was 020.20190314.input.rds
+```
+
+# Variant classification
+
+
+
+I open the RDS from previous step:
+
+
+```{r}
+input = readRDS(paste(rdspath, "020.20190425.input.rds", sep = ""))
+```
+
+
+Add clonal CNR
+
+```{r}
+input = input %>% mutate(
+  Clonal_sCNR = (round(2*sCNR, digits = 0))/2,
+  Clonal_tCNR = (round(2*tCNR, digits = 0))/2,
+  Clonal_gCNR = (round(2*gCNR, digits = 0))/2
+)
+```
+
+
+Remove variants with less than 1 copy or more than 8:
+
+```{r}
+input = input %>% 
+  filter(Clonal_tCNR <=4) %>%
+  filter(Clonal_tCNR >= 0.5)
+```
+
+## Diploid or non-diploid
+
+```{r}
+classified = input %>%
+  mutate(Diploid = if_else(Clonal_tCNR==1, TRUE, FALSE))
+```
+
+
+
+## Copy assignation
+
+
+
+```{r}
+addedcols = classified %>% 
+  mutate(tumor_depth_prop = (TP*Clonal_tCNR)/((TP*Clonal_tCNR)+((1-TP)*Clonal_gCNR)),
+         n = Clonal_tCNR*2,
+         b = Clonal_gCNR*2) %>%
+  mutate(k1=1, 
+         k2=2, 
+         k3=3, 
+         k4=4, 
+         k5=5, 
+         k6=6, 
+         k7=7, 
+         k8=8, 
+         a0=0,
+         a1 = 1 , 
+         a2 = 2, 
+         a3 = 3, 
+         a4 = 4, 
+         a5 = 5, 
+         a6 = 6, 
+         a7 = 7, 
+         a8 = 8) %>%
+  rowid_to_column("VarID") %>%
+  gather(key = kname, value = k, k1:k8) %>%  
+  gather(key = aname, value = a, a0:a8) %>% 
+  rowwise() %>%
+  filter(k<=n) %>%
+  filter(a<=b) %>%
+  filter(!(a>0 & Cohort!="SCORT")) %>%
+  filter(!(a==b & k<a))
+
+conf = 0.05
+groupsprobs = addedcols %>% 
+  mutate(expected_VAF =(((1-tumor_depth_prop)*a)/b)+((tumor_depth_prop*k)/n)) %>%
+  mutate(expected_VAF = if_else(expected_VAF> 1, 1, expected_VAF)) %>%
+  mutate(lb = qbinom(c(conf),Depth, expected_VAF)/Depth,
+         hb = qbinom(c(1-conf),Depth, expected_VAF)/Depth,
+         P = if_else(k==1 & a == 0 &VAF<lb, 
+                      1,
+                      dbinom(Alt_count,Depth, expected_VAF) 
+                      )) %>%
+  group_by(VarID) %>%
+  mutate(InGroups = sum(P>0)) %>%
+  mutate(P = if_else(P<(0.5*max(P)),0 , P)) %>%
+  mutate(InGroups2 = sum(P>0)) %>%
+  filter(!(max(P)==0)) %>% 
+  rowwise() 
+
+  
+
+
+# LOH test
+
+groupsprobs %>%
+  mutate(IsLOH = ((a==0 & k==n) | (k==n & n!=a)) & P>0 ) %>%
+  mutate(IsUniqLOH = IsLOH & InGroups2 ==1) %>%
+  group_by(Gene, Patient) %>%
+  mutate(PassLOHTest = InGroups>1 & IsLOH & sum(IsUniqLOH) >0) %>%
+  filter(IsLOH) %>%
+  filter(PassLOHTest) %>%
+  filter(!IsUniqLOH)  # 238
+
+groupsprobsLOH = groupsprobs %>%
+  mutate(IsLOH = ((a==0 & k==n) | (k==n & n!=a)) & P>0 ) %>%
+  mutate(IsUniqLOH = IsLOH & InGroups2 ==1) %>%
+  group_by(Gene, Patient) %>%
+  mutate(PassLOHTest = InGroups>1 & IsLOH & sum(IsUniqLOH) >0) %>%
+  group_by(VarID) %>%
+  mutate(P = if_else(!IsLOH & sum(PassLOHTest) >0 , 0, P )) %>%
+  mutate(InGroups2 = sum(P>0))
+
+groupsprobsdeamb = groupsprobsLOH %>%
+  filter(P>0) %>%
+  rowwise() %>%
+  unite(k_n_a_b, k, n,a,b,sep =  ":", remove = FALSE) %>%
+  group_by(VarID) %>%
+  mutate(GroupNames = paste(k_n_a_b, collapse = ",")) %>%  
+  filter(!(InGroups2>1 & IsLOH & sum(!IsLOH) >0 & !PassLOHTest )) %>%
+  mutate(InGroups3 = sum(P>0)) %>%
+  rowwise() %>%
+  mutate(IsSNP = a>0) %>%
+  group_by(VarID) %>%
+  filter(!(IsSNP & InGroups3>1 & sum(!IsSNP)>0 & Driverness ==1)) %>%
+  filter(!(!IsSNP & InGroups3>1 & sum(IsSNP)>0 & Driverness !=1)) %>%
+  group_by(VarID) %>%
+  mutate(InGroups4 = sum(P>0)) %>%
+  filter(!(InGroups4>1 & k>min(k))) %>% 
+  mutate(InGroups5 = sum(P>0)) %>%
+  mutate(GroupNames = paste(k_n_a_b, collapse = ",")) %>%
+  filter(!(InGroups5>1 & a ==1)) %>%
+  mutate(InGroups6 = sum(P>0)) %>%
+  mutate(GroupNames = paste(k_n_a_b, collapse = ",")) 
+
+groupsprobsdeamb %>% ungroup() %>%summarise(n_distinct(VarID))
+
+## Check the accuracy of the LOH test by comparing with the known LOH
+
+p = groupsprobs %>%
+  mutate(IsLOH = ((a==0 & k==n) | (k==n & n!=a)) & P>0 ) %>%
+  mutate(IsUniqLOH = IsLOH & InGroups2 ==1) %>%
+  group_by(Gene, Patient) %>%
+  filter(sum(IsUniqLOH)>1) %>%
+  filter(n()>1) %>%
+  mutate(LOHPerc = (sum(IsUniqLOH)-1)/n(),
+         nmuts = n()) %>% 
+  ggplot()+ geom_density(aes(x= LOHPerc))
+
+
+```
+
+
+
+
+
+```{r}
+saveRDS(groupsprobs, paste(rdspath, "028.20190402.groupprobs.rds",sep = ""))  
+saveRDS(groupsprobsdeamb, paste(rdspath, "029.20190425.groupprobsdeamb.rds",sep = "")) # Added fathmm, before was 029.20190403
+
+```
+
+
+
+
+# CCF and Clonality test
+
+
+```{r}
+groupsprobsdeamb = readRDS(paste(rdspath, "029.20190425.groupprobsdeamb.rds",sep = ""))
+```
+
+
+```{r}
+conf = 0.05
+library(prevalence)
+ccfs = groupsprobsdeamb %>%
+  filter(a==0) %>%
+  rowwise() %>%
+  mutate(min_VAF =propCI(x = Alt_count, n = Depth)$lower[2], 
+         max_VAF = propCI(x = Alt_count, n = Depth)$upper[2],
+         CCF = (n*VAF)/(k*tumor_depth_prop) )%>%
+  mutate(min_CCF = (n*min_VAF)/(k*tumor_depth_prop),
+         max_CCF = (n*max_VAF)/(k*tumor_depth_prop) )
+```
+
+
+
+
+## P-value of the binomial test for CCF
+
+p-value of the binomial test for CCF. 
+
+```{r}
+ccfs = ccfs %>% 
+  rowwise() %>%
+  mutate(p.value = binom.test(x =Alt_count, 
+                              n = Depth, 
+                              p = (k*tumor_depth_prop)/n , 
+                              alternative = "less", 
+                              conf.level = 0.95)$p.value)
+```
+
+
+
+Correction of the p-values for the multiple-testing:
+
+```{r}
+ccfs$adjusted_pvalue = p.adjust(ccfs$p.value, method = "BH")
+```
+
+
+```{r}
+saveRDS(ccfs, paste(rdspath, "030.20190425.ccfs.rds", sep = "")) # Added fathmm, bwfore 030.20190403.ccfs.rds
+```
+
+

@@ -1,0 +1,10 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# SCORT
+
+Get a vcf from the csv with the mutations. 
+
+
