@@ -464,7 +464,8 @@ classified = input %>%
 
 ```{r}
 addedcols = classified %>% 
-  mutate(tumor_depth_prop = (TP*Clonal_tCNR)/((TP*Clonal_tCNR)+((1-TP)*Clonal_gCNR)),
+  # mutate(tumor_depth_prop = (TP*Clonal_tCNR)/((TP*Clonal_tCNR)+((1-TP)*Clonal_gCNR)),
+  mutate(tumor_depth_prop = (TP*tCNR)/((TP*tCNR)+((1-TP)*Clonal_gCNR)),
          n = Clonal_tCNR*2,
          f = if_else(Clonal_tCNR==1, 0, (tCNR-Clonal_tCNR)/(1-Clonal_tCNR)),
          b = Clonal_gCNR*2) %>% 
