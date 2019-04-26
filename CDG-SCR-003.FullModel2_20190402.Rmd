@@ -427,16 +427,26 @@ Add clonal CNR
    Clonal_tCNR = (round(2*tCNR, digits = 0))/2,
    Clonal_gCNR = (round(2*gCNR, digits = 0))/2
  )
+                                
+                                 
 
 ```
 
 
-Remove variants with less than 1 copy or more than 8:
+Remove variants with less than 1 copy or more than 8
+Adjust the Clonal_tCNR to be able to "compensate" it with diploid cells
 
 ```{r}
 input = input %>% 
   filter(Clonal_tCNR <=4) %>%
-  filter(Clonal_tCNR >= 0.5)
+  filter(Clonal_tCNR >= 0.5) %>%
+  mutate(Clonal_tCNR = if_else( Clonal_tCNR>1,
+                                if_else(Clonal_tCNR<tCNR,
+                                        Clonal_tCNR+0.5, 
+                                        Clonal_tCNR),
+                                if_else(Clonal_tCNR>tCNR,
+                                        Clonal_tCNR-0.5,
+                                        Clonal_tCNR)))
 ```
 
 ## Diploid or non-diploid
@@ -609,12 +619,13 @@ ccfs = groupsprobsdeamb %>%
 p-value of the binomial test for CCF. 
 
 ```{r}
-ccfs = ccfs %>% 
+ccfs = ccfs %>%
   rowwise() %>%
+  # mutate(p =(((1-f)*k*tumor_depth_prop)/n) +((f*tumor_depth_prop)/2) ) %>% ggplot()+ geom_boxplot(aes(y = p))
   mutate(p.value = binom.test(x =Alt_count, 
                               n = Depth, 
                               # p = (k*tumor_depth_prop)/n , 
-                              p = (((1-f)*k*tumor_depth_prop)/n) +((f*tumor_depth_prop)/2), 
+                              p = ((((1-f)*k*tumor_depth_prop)/n) +((f*tumor_depth_prop)/2)), 
                               alternative = "less", 
                               conf.level = 0.95)$p.value)
 ```
