@@ -411,12 +411,23 @@ input = readRDS(paste(rdspath, "020.20190425.input.rds", sep = ""))
 
 Add clonal CNR
 
+# ```{r}
+# input = input %>% mutate(
+#   Clonal_sCNR = (round(2*sCNR, digits = 0))/2,
+#   Clonal_tCNR = (round(2*tCNR, digits = 0))/2,
+#   Clonal_gCNR = (round(2*gCNR, digits = 0))/2
+# )
+# ```
+
+
 ```{r}
-input = input %>% mutate(
-  Clonal_sCNR = (round(2*sCNR, digits = 0))/2,
-  Clonal_tCNR = (round(2*tCNR, digits = 0))/2,
-  Clonal_gCNR = (round(2*gCNR, digits = 0))/2
-)
+
+ input = input %>% mutate(
+   Clonal_sCNR = (round(2*sCNR, digits = 0))/2,
+   Clonal_tCNR = (round(2*tCNR, digits = 0))/2,
+   Clonal_gCNR = (round(2*gCNR, digits = 0))/2
+ )
+
 ```
 
 
@@ -445,7 +456,8 @@ classified = input %>%
 addedcols = classified %>% 
   mutate(tumor_depth_prop = (TP*Clonal_tCNR)/((TP*Clonal_tCNR)+((1-TP)*Clonal_gCNR)),
          n = Clonal_tCNR*2,
-         b = Clonal_gCNR*2) %>%
+         f = if_else(Clonal_tCNR==1, 0, (tCNR-Clonal_tCNR)/(1-Clonal_tCNR)),
+         b = Clonal_gCNR*2) %>% 
   mutate(k1=1, 
          k2=2, 
          k3=3, 
@@ -474,7 +486,8 @@ addedcols = classified %>%
 
 conf = 0.05
 groupsprobs = addedcols %>% 
-  mutate(expected_VAF =(((1-tumor_depth_prop)*a)/b)+((tumor_depth_prop*k)/n)) %>%
+ # mutate(expected_VAF =(((1-tumor_depth_prop)*a)/b)+((tumor_depth_prop*k)/n)) %>%
+  mutate(expected_VAF =(((1-tumor_depth_prop)*a)/b)+(((1-f)*tumor_depth_prop*k)/n)+((f*tumor_depth_prop)/2)) %>%
   mutate(expected_VAF = if_else(expected_VAF> 1, 1, expected_VAF)) %>%
   mutate(lb = qbinom(c(conf),Depth, expected_VAF)/Depth,
          hb = qbinom(c(1-conf),Depth, expected_VAF)/Depth,
@@ -535,7 +548,7 @@ groupsprobsdeamb = groupsprobsLOH %>%
   mutate(GroupNames = paste(k_n_a_b, collapse = ",")) 
 
 groupsprobsdeamb %>% ungroup() %>%summarise(n_distinct(VarID))
-
+groupsprobsdeamb %>% group_by(InGroups6) %>% summarise(n())   # No ambiguity problems after adding subclonal CN
 ## Check the accuracy of the LOH test by comparing with the known LOH
 
 p = groupsprobs %>%
@@ -557,7 +570,7 @@ p = groupsprobs %>%
 
 ```{r}
 saveRDS(groupsprobs, paste(rdspath, "028.20190402.groupprobs.rds",sep = ""))  
-saveRDS(groupsprobsdeamb, paste(rdspath, "029.20190425.groupprobsdeamb.rds",sep = "")) # Added fathmm, before was 029.20190403
+saveRDS(groupsprobsdeamb, paste(rdspath, "029.20190426.groupprobsdeamb.rds",sep = "")) # Added fathmm 25.04, before was 029.20190403. Added subclonal CN 26.04
 
 ```
 
@@ -568,7 +581,7 @@ saveRDS(groupsprobsdeamb, paste(rdspath, "029.20190425.groupprobsdeamb.rds",sep 
 
 
 ```{r}
-groupsprobsdeamb = readRDS(paste(rdspath, "029.20190425.groupprobsdeamb.rds",sep = ""))
+groupsprobsdeamb = readRDS(paste(rdspath, "029.20190426.groupprobsdeamb.rds",sep = ""))
 ```
 
 
@@ -580,9 +593,12 @@ ccfs = groupsprobsdeamb %>%
   rowwise() %>%
   mutate(min_VAF =propCI(x = Alt_count, n = Depth)$lower[2], 
          max_VAF = propCI(x = Alt_count, n = Depth)$upper[2],
-         CCF = (n*VAF)/(k*tumor_depth_prop) )%>%
-  mutate(min_CCF = (n*min_VAF)/(k*tumor_depth_prop),
-         max_CCF = (n*max_VAF)/(k*tumor_depth_prop) )
+         # CCF = (n*VAF)/(k*tumor_depth_prop) )%>%
+         CCF = (((2*f)+(n*(1-f)))*VAF)/((f+(k*(1-f)))*tumor_depth_prop) )%>%
+   mutate(min_CCF = (((2*f)+(n*(1-f)))*min_VAF)/((f+(k*(1-f)))*tumor_depth_prop),
+          max_CCF = (((2*f)+(n*(1-f)))*max_VAF)/((f+(k*(1-f)))*tumor_depth_prop) )  
+  # mutate(min_CCF = (n*min_VAF)/(k*tumor_depth_prop),
+  #        max_CCF = (n*max_VAF)/(k*tumor_depth_prop) )
 ```
 
 
@@ -597,7 +613,8 @@ ccfs = ccfs %>%
   rowwise() %>%
   mutate(p.value = binom.test(x =Alt_count, 
                               n = Depth, 
-                              p = (k*tumor_depth_prop)/n , 
+                              # p = (k*tumor_depth_prop)/n , 
+                              p = (((1-f)*k*tumor_depth_prop)/n) +((f*tumor_depth_prop)/2), 
                               alternative = "less", 
                               conf.level = 0.95)$p.value)
 ```
