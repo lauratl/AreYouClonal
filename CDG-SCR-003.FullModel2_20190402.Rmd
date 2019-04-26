@@ -444,9 +444,12 @@ input = input %>%
                                 if_else(Clonal_tCNR<tCNR,
                                         Clonal_tCNR+0.5, 
                                         Clonal_tCNR),
-                                if_else(Clonal_tCNR>tCNR,
-                                        Clonal_tCNR-0.5,
-                                        Clonal_tCNR)))
+                                if_else(Clonal_tCNT<1,
+                                        if_else(Clonal_tCNR>tCNR,
+                                                Clonal_tCNR-0.5,
+                                                Clonal_tCNR),
+                                        Clonal_tCNR))
+                                )
 ```
 
 ## Diploid or non-diploid
@@ -494,6 +497,7 @@ addedcols = classified %>%
   filter(a<=b) %>%
   filter(!(a>0 & Cohort!="SCORT")) %>%
   filter(!(a==b & k<a))
+
 
 conf = 0.05
 groupsprobs = addedcols %>% 
@@ -641,7 +645,7 @@ ccfs$adjusted_pvalue = p.adjust(ccfs$p.value, method = "BH")
 
 
 ```{r}
-saveRDS(ccfs, paste(rdspath, "030.20190425.ccfs.rds", sep = "")) # Added fathmm, bwfore 030.20190403.ccfs.rds
+saveRDS(ccfs, paste(rdspath, "030.20190426.ccfs.rds", sep = "")) # Added fathmm 25.04, bwfore 030.20190403.ccfs.rds. Added subclonalCN 26.04
 ```
 
 
